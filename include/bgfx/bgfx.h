@@ -647,6 +647,8 @@ namespace bgfx
 		                                   ///  create back-buffer color surface.
 		void* backBufferDS;                //!< Backbuffer depth/stencil. If `NULL`, bgfx will create a back-buffer
 		                                   ///  depth/stencil surface.
+		void *worldTracking;               //!< Native world tracking provider used for visionOS.
+		
 		NativeWindowHandleType::Enum type; //!< Handle type. Needed for platforms having more than one option.
 	};
 

@@ -634,6 +634,11 @@ typedef struct bgfx_platform_data_s
     void*                backBuffer;
     
     /**
+     * Native world tracking provider used for visionOS.
+     */
+    void*             worldTracking;
+    
+    /**
      * Backbuffer depth/stencil. If `NULL`, bgfx will create a back-buffer
      * depth/stencil surface.
      */
