@@ -1063,6 +1063,9 @@ namespace bgfx { namespace mtl
         cp_layer_renderer_t m_layerRenderer;
         cp_frame_t m_frame;
         cp_drawable_t m_drawable;
+        ar_session_t session;
+        ar_world_tracking_provider_t world_tracking;
+        ar_device_anchor_t device_anchor;
 #else
 		CAMetalLayer* m_metalLayer;
         id <CAMetalDrawable> m_drawable;

@@ -601,7 +601,12 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 			m_screenshotBlitProgram.create(&m_screenshotBlitProgramVsh, &m_screenshotBlitProgramFsh);
 
 			reset(m_renderPipelineDescriptor);
-			m_renderPipelineDescriptor.colorAttachments[0].pixelFormat = getSwapChainPixelFormat(m_mainFrameBuffer.m_swapChain);
+			
+			cp_layer_renderer_configuration_t layerConfiguration = cp_layer_renderer_get_configuration(m_mainFrameBuffer.m_swapChain->m_layerRenderer);
+			
+			m_renderPipelineDescriptor
+				.colorAttachments[0].pixelFormat = cp_layer_renderer_configuration_get_color_format(layerConfiguration);
+			m_renderPipelineDescriptor.depthAttachmentPixelFormat = cp_layer_renderer_configuration_get_depth_format(layerConfiguration);
 			m_renderPipelineDescriptor.vertexFunction   = m_screenshotBlitProgram.m_vsh->m_function;
 			m_renderPipelineDescriptor.fragmentFunction = m_screenshotBlitProgram.m_fsh->m_function;
 			m_screenshotBlitRenderPipelineState         = m_device.newRenderPipelineStateWithDescriptor(m_renderPipelineDescriptor);
@@ -1412,7 +1417,19 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 		{
 			return false;
 		}
-
+		
+		ar_device_anchor_t createPoseForTiming(cp_frame_timing_t timing, ar_world_tracking_provider_t world_tracking) {
+			NSLog(@"cp_frame_timing_get_presentation_time");
+			ar_device_anchor_t outAnchor = ar_device_anchor_create();
+			cp_time_t presentationTime = cp_frame_timing_get_presentation_time(timing);
+			CFTimeInterval queryTime = cp_time_to_cf_time_interval(presentationTime);
+			ar_device_anchor_query_status_t status = ar_world_tracking_provider_query_device_anchor_at_timestamp(world_tracking, queryTime, outAnchor);
+			if (status != ar_device_anchor_query_status_success) {
+				NSLog(@"Failed to get estimated pose from world tracking provider for presentation timestamp %0.3f", queryTime);
+			}
+			return outAnchor;
+		}
+		
 		void flip() override
 		{
 			if (NULL == m_commandBuffer)
@@ -1431,9 +1448,44 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 					if (NULL != frameBuffer.m_swapChain->m_drawable)
 					{
 #if BX_PLATFORM_VISIONOS
-						cp_frame_start_submission(frameBuffer.m_swapChain->m_frame);
+	
+						
+//						cp_frame_start_submission(frameBuffer.m_swapChain->m_frame);
+						
+						auto timing_info = cp_drawable_get_frame_timing(frameBuffer.m_swapChain->m_drawable);
+						ar_device_anchor_t anchor = createPoseForTiming(timing_info, frameBuffer.m_swapChain->world_tracking);
+//						auto time = cp_time_to_cf_time_interval(cp_frame_timing_get_presentation_time(timing_info));
+//						
+//						ar_world_tracking_provider_t world_tracking = frameBuffer.m_swapChain->world_tracking;
+//						ar_device_anchor_t device_anchor = frameBuffer.m_swapChain->device_anchor;
+//						
+//						const ar_device_anchor_query_status_t status =
+//						ar_world_tracking_provider_query_device_anchor_at_timestamp(world_tracking, time, device_anchor);
+//						
+//						if (status != ar_device_anchor_query_status_success) {
+//							NSLog(@"Failed to get estimated pose from world tracking provider for presentation timestamp");
+//						} else {
+//							NSLog(@"Succeded to get estimated pose from world tracking provider for presentation timestamp");
+//						}
+//						
+//						cp_view_t view = cp_drawable_get_view(frameBuffer.m_swapChain->m_drawable, 0);
+//						
+//						simd_float4x4 simdDeviceAnchor = ar_anchor_get_origin_from_anchor_transform(device_anchor);
+//						
+//						simd_float4x4 projection = cp_drawable_compute_projection(frameBuffer.m_swapChain->m_drawable,
+//													   cp_axis_direction_convention_right_up_back,
+//													   0);
+						
+						
+						
+						NSLog(@"cp_drawable_set_device_anchor");
+						cp_drawable_set_device_anchor(frameBuffer.m_swapChain->m_drawable, anchor);
+						
 						cp_drawable_encode_present(frameBuffer.m_swapChain->m_drawable, m_commandBuffer);
-						cp_frame_end_submission(frameBuffer.m_swapChain->m_frame);
+						m_commandBuffer.commit();
+							
+						NSLog(@"cp_frame_end_submission");
+						cp_frame_end_submission(m_mainFrameBuffer.m_swapChain->m_frame);
 #else
 						m_commandBuffer.presentDrawable(frameBuffer.m_swapChain->m_drawable);
 						MTL_RELEASE(frameBuffer.m_swapChain->m_drawable);
@@ -1879,7 +1931,6 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 						: swapChain->currentDrawableTexture()
 						;
 				}
-
 				_renderPassDescriptor.depthAttachment.texture   = swapChain->m_backBufferDepth;
 				_renderPassDescriptor.stencilAttachment.texture = swapChain->m_backBufferStencil;
 			}
@@ -3315,7 +3366,10 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 	SwapChainMtl::~SwapChainMtl()
 	{
 #if BX_PLATFORM_VISIONOS
+		ar_session_stop(session);
 		MTL_RELEASE(m_layerRenderer);
+		MTL_RELEASE(session);
+		MTL_RELEASE(world_tracking);
 #else
 		MTL_RELEASE(m_metalLayer);
 		MTL_RELEASE(m_drawable);
@@ -3339,7 +3393,23 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 		{
 			cp_layer_renderer_t layerRenderer = (cp_layer_renderer_t)_nwh;
 			m_layerRenderer = layerRenderer;
+			
+			ar_world_tracking_configuration_t config = ar_world_tracking_configuration_create();
+			world_tracking = ar_world_tracking_provider_create(config);
+			
+			ar_data_providers_t dataProviders = ar_data_providers_create_with_data_providers(world_tracking, nil);
+			
+//			device_anchor = ar_device_anchor_create();
+			
+			session = ar_session_create();
+			
+			ar_session_run(session, dataProviders);
+			
 			retain(m_layerRenderer);
+			retain(session);
+			retain(world_tracking);
+//			retain(device_anchor);
+
 		}
 #else
 		if (m_metalLayer)
@@ -3564,9 +3634,27 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 		if (NULL == m_drawableTexture)
 		{
 #if BX_PLATFORM_VISIONOS
+			NSLog(@"cp_layer_renderer_query_next_frame");
+
 			m_frame = cp_layer_renderer_query_next_frame(m_layerRenderer);
+			
 			if (m_frame)
 			{
+				
+				NSLog(@"cp_frame_predict_timing");
+				cp_frame_timing_t timing = cp_frame_predict_timing(m_frame);
+				if (timing == nullptr) { return nullptr; }
+				
+				cp_frame_start_update(m_frame);
+				
+				cp_frame_end_update(m_frame);
+				
+				NSLog(@"cp_time_wait_until - start");
+				cp_time_wait_until(cp_frame_timing_get_optimal_input_time(timing));
+				NSLog(@"cp_time_wait_until - end");
+				NSLog(@"cp_frame_start_submission");
+				cp_frame_start_submission(m_frame);
+				NSLog(@"cp_frame_query_drawable");
 				m_drawable = cp_frame_query_drawable(m_frame);
 			}
 #else
@@ -3788,7 +3876,8 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 				m_activeCommandBuffer.addCompletedHandler(commandBufferFinishedCallback, this);
 			}
 
-			m_activeCommandBuffer.commit();
+//			m_activeCommandBuffer.commit();
+			NSLog(@"m_activeCommandBuffer.commit();");
 
 			if (_waitForFinish)
 			{
@@ -4034,6 +4123,7 @@ BX_STATIC_ASSERT(BX_COUNTOF(s_accessNames) == Access::Count, "Invalid s_accessNa
 
 	void RendererContextMtl::submit(Frame* _render, ClearQuad& _clearQuad, TextVideoMemBlitter& _textVideoMemBlitter)
 	{
+		NSLog(@"RendererContextMtl::submit");
 		m_cmd.finish(false);
 
 		if (NULL == m_commandBuffer)
