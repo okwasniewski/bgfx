@@ -435,6 +435,10 @@ namespace bgfx { namespace mtl
 			[m_obj setBlendColorRed:_red green:_green blue:_blue alpha:_alpha];
 		}
 
+		void setVertexAmplificationCount(NSUInteger count, MTLVertexAmplificationViewMapping* viewMappings) {
+			[m_obj setVertexAmplificationCount:count viewMappings:viewMappings];
+		}
+
 		void setCullMode(MTLCullMode _cullMode)
 		{
 			[m_obj setCullMode:_cullMode];
@@ -478,6 +482,11 @@ namespace bgfx { namespace mtl
 		void setViewport(MTLViewport _viewport)
 		{
 			[m_obj setViewport:_viewport];
+		}
+
+		void setViewports(MTLViewport _viewport[], NSInteger count)
+		{
+			[m_obj setViewports:_viewport count:count];
 		}
 
 		void setVisibilityResultMode(MTLVisibilityResultMode _mode, NSUInteger _offset)
@@ -1063,6 +1072,8 @@ namespace bgfx { namespace mtl
         cp_layer_renderer_t m_layerRenderer;
         cp_frame_t m_frame;
         cp_drawable_t m_drawable;
+        ar_session_t session;
+        ar_world_tracking_provider_t world_tracking;
 #else
 		CAMetalLayer* m_metalLayer;
         id <CAMetalDrawable> m_drawable;
